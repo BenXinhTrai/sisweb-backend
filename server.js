@@ -48,7 +48,6 @@ app.post('/api/registro', (req, res) => {
     const { email, password, rol } = req.body;
     if (!email || !password) return res.status(400).json({ error: 'Email y password obligatorios' });
 
-    // Cambiamos 'usuarios' por 'Usuario' para que coincida con tu Workbench
     const sql = 'INSERT INTO Usuario (email, password, rol) VALUES (?, ?, ?)';
     db.query(sql, [email, password, rol || 'participante'], (err, result) => {
         if (err) {
@@ -59,7 +58,7 @@ app.post('/api/registro', (req, res) => {
     });
 });
 
-// Ruta de Login (Requisito SENA)
+// Ruta de Login
 app.post('/api/login', (req, res) => {
     const { email, password } = req.body;
     const sql = 'SELECT * FROM Usuario WHERE email = ? AND password = ?';
@@ -77,7 +76,6 @@ app.post('/api/login', (req, res) => {
 
 // Obtener Todos los Usuarios
 app.get('/api/usuarios', (req, res) => {
-    // Usamos los campos reales de tu modelo: id_usuario, nombre
     const sql = 'SELECT id_usuario, nombre, email, rol FROM Usuario';
 
     db.query(sql, (err, results) => {
