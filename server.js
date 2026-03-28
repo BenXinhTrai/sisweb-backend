@@ -101,7 +101,9 @@ app.post('/api/seminarios', (req, res) => {
     const sql = 'INSERT INTO Seminario (codigo, nombre, descripcion, fecha, id_coordinador) VALUES (?, ?, ?, ?, ?)';
     db.query(sql, [codigo, nombre, descripcion, fecha, id_coordinador], (err, result) => {
         if (err) {
+            console.error('Error in /api/seminarios:', err);
             if (err.code === 'ER_DUP_ENTRY') return res.status(409).json({ error: 'El código del seminario ya existe' });
+            if (err.code === 'ER_NO_REFERENCED_ROW_2') return res.status(400).json({ error: 'El ID del coordinador indicado no existe' });
             return res.status(500).json({ error: 'Error al crear el seminario en la BD' });
         }
         res.status(201).json({ mensaje: 'Seminario creado exitosamente', id: result.insertId });
@@ -134,6 +136,29 @@ app.post('/api/inscripciones', (req, res) => {
             return res.status(500).json({ error: 'Error al registrar la inscripción' });
         }
         res.status(201).json({ mensaje: 'Inscripción procesada correctamente' });
+    });
+});
+// Obtener todos los Coordinadores (GET)
+app.get('/api/coordinadores', (req, res) => {
+    db.query('SELECT * FROM Coordinador', (err, results) => {
+        if (err) return res.status(500).json({ error: 'Error al consultar coordinadores' });
+        res.status(200).json(results);
+    });
+});
+
+// Obtener todos los Ponentes (GET)
+app.get('/api/ponentes', (req, res) => {
+    db.query('SELECT * FROM Ponente', (err, results) => {
+        if (err) return res.status(500).json({ error: 'Error al consultar ponentes' });
+        res.status(200).json(results);
+    });
+});
+
+// Obtener todos los Recursos (GET)
+app.get('/api/recursos', (req, res) => {
+    db.query('SELECT * FROM Recurso', (err, results) => {
+        if (err) return res.status(500).json({ error: 'Error al consultar recursos' });
+        res.status(200).json(results);
     });
 });
 
