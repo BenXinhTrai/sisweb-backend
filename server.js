@@ -2,7 +2,7 @@
 // ARCHIVO: server.js
 // DESCRIPCIÓN: API REST para el sistema SISWEB (Registro, Autenticación y Módulos)
 // =========================================================================
-
+require('dotenv').config();
 // 1. Importación de módulos
 const express = require('express');
 const cors = require('cors');
@@ -18,11 +18,11 @@ app.use(express.json());
 
 // 4. CONEXIÓN A LA NUBE (TiDB) 
 const db = mysql.createPool({
-    host: 'gateway01.us-east-1.prod.aws.tidbcloud.com',
-    port: 4000,
-    user: '2dXQdTh6ec48bFA.root',
-    password: 'CpnWC8h1LcIFRPEa',
-    database: 'sisweb_db',
+    host: process.env.DB_HOST,
+    port: process.env.DB_PORT,
+    user: process.env.DB_USER,
+    password: process.env.DB_PASSWORD,
+    database: process.env.DB_NAME,
     ssl: { rejectUnauthorized: true },
     waitForConnections: true,
     connectionLimit: 10,
