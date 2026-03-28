@@ -140,6 +140,47 @@ app.post('/api/inscripciones', (req, res) => {
 });
 
 // =========================================================================
+// MÓDULO DE CONSULTAS DE INSCRIPCIONES
+// =========================================================================
+
+// Ver mis seminarios inscritos (Para el Participante)
+app.get('/api/mis-inscripciones/:id_participante', (req, res) => {
+    const { id_participante } = req.params;
+
+    // Hacemos un JOIN para traer los datos del seminario y el estado de la inscripción
+    const sql = `
+        SELECT s.codigo, s.nombre, s.fecha, i.estado, i.fecha as fecha_inscripcion 
+        FROM Inscripcion i 
+        JOIN Seminario s ON i.id_seminario = s.id_seminario 
+        WHERE i.id_participante = ?
+        ORDER BY s.fecha ASC
+    `;
+
+    db.query(sql, [id_participante], (err, results) => {
+        if (err) return res.status(500).json({ error: 'Error al consultar tus inscripciones' });
+        res.status(200).json(results);
+    });
+});
+
+// Ver estudiantes inscritos en un seminario (Para el Coordinador)
+app.get('/api/seminario-inscritos/:id_seminario', (req, res) => {
+    const { id_seminario } = req.params;
+
+    // Hacemos un JOIN para traer los datos del participante
+    const sql = `
+        SELECT p.nombre, p.correo, p.matricula, i.estado, i.fecha as fecha_inscripcion 
+        FROM Inscripcion i 
+        JOIN Participante p ON i.id_participante = p.id_participante 
+        WHERE i.id_seminario = ?
+    `;
+
+    db.query(sql, [id_seminario], (err, results) => {
+        if (err) return res.status(500).json({ error: 'Error al consultar los estudiantes del seminario' });
+        res.status(200).json(results);
+    });
+});
+
+// =========================================================================
 // 5. Iniciar Servidor
 // =========================================================================
 app.listen(PORT, () => {
