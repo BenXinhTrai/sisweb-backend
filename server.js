@@ -348,7 +348,14 @@ app.post('/api/seminarios', (req, res) => {
 
 // Obtener todos los Seminarios (GET)
 app.get('/api/seminarios', (req, res) => {
-    const sql = 'SELECT * FROM Seminario ORDER BY fecha ASC';
+    const sql = `
+        SELECT 
+            s.*,
+            (s.cupos_totales - (SELECT COUNT(*) FROM Inscripcion i WHERE i.id_seminario = s.id_seminario AND i.estado = 'Inscrito')) as cupos_disponibles
+        FROM Seminario s 
+        WHERE s.fecha >= CURDATE()
+        ORDER BY s.fecha ASC
+    `;
     db.query(sql, (err, results) => {
         if (err) return res.status(500).json({ error: 'Error al consultar los seminarios' });
         res.status(200).json(results);
@@ -356,23 +363,78 @@ app.get('/api/seminarios', (req, res) => {
 });
 
 // Inscribir un Participante a un Seminario (POST)
-app.post('/api/inscripciones', (req, res) => {
+app.post('/api/inscripciones', async (req, res) => {
     const { id_seminario, id_participante, valor, estado } = req.body;
 
     if (!id_seminario || !id_participante) {
         return res.status(400).json({ error: 'Se requiere el ID del seminario y del participante' });
     }
 
-    const fechaActual = new Date().toISOString().split('T')[0];
-    const sql = 'INSERT INTO Inscripcion (id_seminario, id_participante, fecha, valor, estado) VALUES (?, ?, ?, ?, ?)';
+    try {
+        // Validar cupos disponibles
+        const [[seminario]] = await db.promise().query(`
+            SELECT s.nombre, s.cupos_totales, 
+            (SELECT COUNT(*) FROM Inscripcion WHERE id_seminario = ?) as inscritos
+            FROM Seminario s WHERE s.id_seminario = ?
+        `, [id_seminario, id_seminario]);
 
-    db.query(sql, [id_seminario, id_participante, fechaActual, valor || 0.00, estado || 'Inscrito'], (err, result) => {
-        if (err) {
-            console.error(err);
-            return res.status(500).json({ error: 'Error al registrar la inscripción' });
+        if (!seminario) return res.status(404).json({ error: 'Seminario no encontrado' });
+        if (seminario.cupos_totales - seminario.inscritos <= 0) {
+            return res.status(400).json({ error: 'No hay cupos disponibles' });
         }
+
+        // Revisar si ya está inscrito
+        const [[inscripcionExitente]] = await db.promise().query(
+            'SELECT * FROM Inscripcion WHERE id_seminario = ? AND id_participante = ?',
+            [id_seminario, id_participante]
+        );
+        if (inscripcionExitente) return res.status(400).json({ error: 'Ya estás inscrito en este seminario' });
+
+        const fechaActual = new Date().toISOString().split('T')[0];
+        await db.promise().query(
+            'INSERT INTO Inscripcion (id_seminario, id_participante, fecha, valor, estado) VALUES (?, ?, ?, ?, ?)',
+            [id_seminario, id_participante, fechaActual, valor || 0.00, estado || 'Inscrito']
+        );
+
+        // Buscar datos del participante para el correo
+        const [[user]] = await db.promise().query(`
+            SELECT u.email, p.nombre 
+            FROM Participante p 
+            JOIN Usuario u ON p.id_usuario = u.id_usuario 
+            WHERE p.id_participante = ?
+        `, [id_participante]);
+
+        if (user && user.email) {
+            const mailOptions = {
+                from: `"Soporte SISWEB" <${process.env.EMAIL_USER}>`,
+                to: user.email,
+                subject: 'Confirmación de Inscripción - SISWEB',
+                html: `
+                    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #e0e0e0; border-radius: 8px; overflow: hidden;">
+                        <div style="background-color: #1565C0; padding: 20px; text-align: center;">
+                            <h1 style="color: white; margin: 0;">SISWEB</h1>
+                        </div>
+                        <div style="padding: 30px; color: #333;">
+                            <h2>¡Hola, ${user.nombre}!</h2>
+                            <p>Tu inscripción ha sido confirmada exitosamente en el sistema.</p>
+                            <p>Seminario: <strong>${seminario.nombre}</strong></p>
+                            <p>¡Guarda la fecha y prepárate para asistir!</p>
+                        </div>
+                        <div style="background-color: #f5f5f5; padding: 15px; text-align: center; font-size: 12px; color: #888;">
+                            &copy; 2026 Proyecto SISWEB - SENA.
+                        </div>
+                    </div>
+                `
+            };
+            transporter.sendMail(mailOptions).catch(err => console.error("Error correo inscripción:", err));
+        }
+
         res.status(201).json({ mensaje: 'Inscripción procesada correctamente' });
-    });
+
+    } catch (error) {
+        console.error("Error en inscripciones:", error);
+        res.status(500).json({ error: 'Error interno del servidor al inscribir' });
+    }
 });
 // Obtener todos los Coordinadores (GET)
 app.get('/api/coordinadores', (req, res) => {
