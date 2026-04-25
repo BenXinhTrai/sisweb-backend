@@ -7,13 +7,18 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const mysql = require('mysql2');
+const bcrypt = require('bcryptjs');
 
 // 2. Inicialización
 const app = express();
 const PORT = process.env.PORT || 3000;
 
 // 3. Middlewares
-app.use(cors());
+app.use(cors({
+    origin: process.env.FRONTEND_URL || '*',
+    methods: ['GET', 'POST', 'PUT', 'DELETE'],
+    credentials: true
+}));
 app.use(express.json());
 
 // 4. CONEXIÓN A LA NUBE (TiDB) 
@@ -43,31 +48,113 @@ db.getConnection((err, connection) => {
 // RUTAS (ENDPOINTS) - AUTENTICACIÓN Y USUARIOS
 // =========================================================================
 
-// Ruta de Registro
-app.post('/api/registro', (req, res) => {
-    const { email, password, rol } = req.body;
+// Ruta de Registro con Transacción y bcryptjs
+app.post('/api/registro', async (req, res) => {
+    const { email, password, rol, nombre, documento, telefono } = req.body;
     if (!email || !password) return res.status(400).json({ error: 'Email y password obligatorios' });
 
-    const sql = 'INSERT INTO Usuario (email, password, rol) VALUES (?, ?, ?)';
-    db.query(sql, [email, password, rol || 'participante'], (err, result) => {
-        if (err) {
-            if (err.code === 'ER_DUP_ENTRY') return res.status(409).json({ error: 'Correo ya registrado' });
-            return res.status(500).json({ error: 'Error del servidor' });
-        }
-        res.status(201).json({ mensaje: 'Usuario registrado exitosamente' });
-    });
+    let rolFiltro = rol || 'participante';
+
+    try {
+        const hashedPassword = await bcrypt.hash(password, 10);
+
+        db.getConnection((err, connection) => {
+            if (err) return res.status(500).json({ error: 'Error al conectar con la base de datos' });
+
+            connection.beginTransaction((err) => {
+                if (err) {
+                    connection.release();
+                    return res.status(500).json({ error: 'Error iniciando transacción' });
+                }
+
+                // Paso 1: Inserta en Usuario
+                const sqlUser = 'INSERT INTO Usuario (nombre, documento, email, telefono, password, rol) VALUES (?, ?, ?, ?, ?, ?)';
+                connection.query(sqlUser, [nombre || null, documento || null, email, telefono || null, hashedPassword, rolFiltro], (err, userResult) => {
+                    if (err) {
+                        return connection.rollback(() => {
+                            connection.release();
+                            if (err.code === 'ER_DUP_ENTRY') return res.status(409).json({ error: 'Correo ya registrado' });
+                            return res.status(500).json({ error: 'Error al crear usuario primario' });
+                        });
+                    }
+
+                    const idUsuario = userResult.insertId;
+
+                    // Paso 2: Inserta en la subtabla correspondiente
+                    let sqlSubTable = '';
+                    let subParams = [];
+
+                    if (rolFiltro === 'participante') {
+                        sqlSubTable = 'INSERT INTO Participante (nombre, correo, matricula, id_usuario) VALUES (?, ?, ?, ?)';
+                        subParams = [nombre || null, email, documento || null, idUsuario];
+                    } else if (rolFiltro === 'coordinador') {
+                        sqlSubTable = 'INSERT INTO Coordinador (nombre, correo, id_usuario) VALUES (?, ?, ?)';
+                        subParams = [nombre || null, email, idUsuario];
+                    } else if (rolFiltro === 'administrador') {
+                        sqlSubTable = 'INSERT INTO Administrador (nombre, id_usuario) VALUES (?, ?)';
+                        subParams = [nombre || null, idUsuario];
+                    }
+
+                    if (sqlSubTable) {
+                        connection.query(sqlSubTable, subParams, (err, subResult) => {
+                            if (err) {
+                                return connection.rollback(() => {
+                                    connection.release();
+                                    return res.status(500).json({ error: 'Error al registrar rol específico' });
+                                });
+                            }
+
+                            connection.commit((err) => {
+                                if (err) {
+                                    return connection.rollback(() => {
+                                        connection.release();
+                                        return res.status(500).json({ error: 'Error al confirmar la transacción' });
+                                    });
+                                }
+                                connection.release();
+                                res.status(201).json({ mensaje: 'Usuario registrado exitosamente' });
+                            });
+                        });
+                    } else {
+                        connection.commit((err) => {
+                            if (err) {
+                                return connection.rollback(() => {
+                                    connection.release();
+                                    return res.status(500).json({ error: 'Error al confirmar transacción base' });
+                                });
+                            }
+                            connection.release();
+                            res.status(201).json({ mensaje: 'Usuario registrado exitosamente (Sin sub-tabla)' });
+                        });
+                    }
+                });
+            });
+        });
+    } catch (error) {
+        res.status(500).json({ error: 'Error al encriptar contraseña' });
+    }
 });
 
 // Ruta de Login
 app.post('/api/login', (req, res) => {
     const { email, password } = req.body;
-    const sql = 'SELECT * FROM Usuario WHERE email = ? AND password = ?';
+    const sql = 'SELECT * FROM Usuario WHERE email = ?';
 
-    db.query(sql, [email, password], (err, results) => {
+    db.query(sql, [email], async (err, results) => {
         if (err) return res.status(500).json({ mensaje: 'Error interno' });
 
         if (results.length > 0) {
-            res.status(200).json({ mensaje: 'autenticación satisfactoria', usuario: results[0] });
+            const usuario = results[0];
+            // Comparamos el hash de la BD con el password que escribió el usuario
+            const match = await bcrypt.compare(password, usuario.password);
+            
+            if (match) {
+                // Remover el campo de la contraseña antes de mandarlo al frontend por seguridad
+                delete usuario.password;
+                res.status(200).json({ mensaje: 'autenticación satisfactoria', usuario });
+            } else {
+                res.status(401).json({ mensaje: 'error en la autenticación' });
+            }
         } else {
             res.status(401).json({ mensaje: 'error en la autenticación' });
         }
