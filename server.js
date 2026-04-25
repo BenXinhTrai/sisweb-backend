@@ -8,6 +8,7 @@ const express = require('express');
 const cors = require('cors');
 const mysql = require('mysql2');
 const bcrypt = require('bcryptjs');
+const nodemailer = require('nodemailer');
 
 // 2. Inicialización
 const app = express();
@@ -42,6 +43,26 @@ db.getConnection((err, connection) => {
     }
     console.log('Conexión exitosa a la base de datos TiDB en la nube ☁️ (Pool)');
     connection.release();
+});
+
+// =========================================================================
+// CONFIGURACIÓN DE CORREOS (NODEMAILER)
+// =========================================================================
+const transporter = nodemailer.createTransport({
+  service: 'gmail',
+  auth: {
+    user: process.env.EMAIL_USER, // Su Gmail
+    pass: process.env.EMAIL_PASS  // La clave de 16 letras
+  }
+});
+
+// Prueba rápida para ver si el cartero tiene la llave correcta
+transporter.verify((error, success) => {
+  if (error) {
+    console.log("❌ Error con el cartero de Gmail:", error);
+  } else {
+    console.log("✅ El cartero de Gmail está listo para repartir!");
+  }
 });
 
 // =========================================================================
