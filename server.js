@@ -66,6 +66,37 @@ transporter.verify((error, success) => {
   }
 });
 
+// Helper para correo de bienvenida
+const enviarCorreoBienvenida = (email, nombre, rol) => {
+    const mailOptions = {
+        from: `"Soporte SISWEB" <${process.env.EMAIL_USER}>`,
+        to: email,
+        subject: '¡Bienvenido a SISWEB!',
+        html: `
+            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #e0e0e0; border-radius: 8px; overflow: hidden;">
+                <div style="background-color: #1565C0; padding: 20px; text-align: center;">
+                    <h1 style="color: white; margin: 0;">SISWEB</h1>
+                </div>
+                <div style="padding: 30px; color: #333;">
+                    <h2>¡Hola, ${nombre}!</h2>
+                    <p>Te damos la más cordial bienvenida a nuestra plataforma SISWEB.</p>
+                    <p>Tu cuenta como <strong>${rol}</strong> ha sido creada exitosamente. Ya puedes ingresar al sistema para gestionar tus seminarios.</p>
+                    <div style="text-align: center; margin: 30px 0;">
+                        <a href="${process.env.FRONTEND_URL || 'https://sisweb.online'}/login" 
+                           style="background-color: #1565C0; color: white; padding: 12px 25px; text-decoration: none; border-radius: 5px; font-weight: bold; display: inline-block;">
+                           Iniciar Sesión
+                        </a>
+                    </div>
+                </div>
+                <div style="background-color: #f5f5f5; padding: 15px; text-align: center; font-size: 12px; color: #888;">
+                    &copy; 2026 Proyecto SISWEB - Universidad del Valle.
+                </div>
+            </div>
+        `
+    };
+    transporter.sendMail(mailOptions).catch(err => console.error("Error enviando correo de bienvenida:", err));
+};
+
 // =========================================================================
 // RUTAS (ENDPOINTS) - AUTENTICACIÓN Y USUARIOS
 // =========================================================================
@@ -134,6 +165,7 @@ app.post('/api/registro', async (req, res) => {
                                     });
                                 }
                                 connection.release();
+                                enviarCorreoBienvenida(email, nombre, rolFiltro);
                                 res.status(201).json({ mensaje: 'Usuario registrado exitosamente' });
                             });
                         });
@@ -146,6 +178,7 @@ app.post('/api/registro', async (req, res) => {
                                 });
                             }
                             connection.release();
+                            enviarCorreoBienvenida(email, nombre, rolFiltro);
                             res.status(201).json({ mensaje: 'Usuario registrado exitosamente (Sin sub-tabla)' });
                         });
                     }
