@@ -9,6 +9,7 @@ const cors = require('cors');
 const mysql = require('mysql2');
 const bcrypt = require('bcryptjs');
 const nodemailer = require('nodemailer');
+const crypto = require('crypto');
 
 // 2. Inicialización
 const app = express();
@@ -180,6 +181,93 @@ app.post('/api/login', (req, res) => {
             res.status(401).json({ mensaje: 'error en la autenticación' });
         }
     });
+});
+
+// =========================================================================
+// RUTAS (ENDPOINTS) - RECUPERACIÓN DE CONTRASEÑA
+// =========================================================================
+
+// Solicitar Restablecimiento de Contraseña
+app.post('/api/olvide-password', async (req, res) => {
+    const { email } = req.body;
+    if (!email) return res.status(400).json({ error: 'El correo es obligatorio' });
+
+    try {
+        const [users] = await db.promise().query('SELECT id_usuario, nombre FROM Usuario WHERE email = ?', [email]);
+        if (users.length === 0) {
+            return res.status(404).json({ error: 'No existe una cuenta con ese correo' });
+        }
+
+        const user = users[0];
+        const token = crypto.randomBytes(32).toString('hex');
+        
+        // El token expira en 1 hora
+        const expiration = new Date();
+        expiration.setHours(expiration.getHours() + 1);
+
+        await db.promise().query(
+            'UPDATE Usuario SET reset_token = ?, token_expiracion = ? WHERE id_usuario = ?',
+            [token, expiration, user.id_usuario]
+        );
+
+        const resetUrl = `${process.env.FRONTEND_URL || 'http://localhost:5173'}/restablecer-password?token=${token}`;
+
+        const mailOptions = {
+            from: process.env.EMAIL_USER,
+            to: email,
+            subject: 'Recuperación de Contraseña - SISWEB',
+            html: `
+                <h3>Hola, ${user.nombre || 'Usuario'}</h3>
+                <p>Recibimos una solicitud para restablecer tu contraseña.</p>
+                <p>Haz clic en el siguiente enlace para crear una nueva contraseña:</p>
+                <a href="${resetUrl}" style="display:inline-block; background-color: #007bff; padding: 10px 15px; color: white; text-decoration: none; border-radius: 5px; margin: 10px 0;">Restablecer Contraseña</a>
+                <p>Este enlace expirará en 1 hora.</p>
+                <p>Si no solicitaste este cambio, ignora este correo.</p>
+            `
+        };
+
+        transporter.sendMail(mailOptions, (error, info) => {
+            if (error) {
+                console.error("Error enviando email:", error);
+                return res.status(500).json({ error: 'Error al enviar el correo de recuperación' });
+            }
+            res.json({ message: 'Se ha enviado un correo con las instrucciones a tu bandeja de entrada.' });
+        });
+
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ error: 'Error interno del servidor.' });
+    }
+});
+
+// Procesar Nueva Contraseña
+app.post('/api/reset-password', async (req, res) => {
+    const { token, newPassword } = req.body;
+    if (!token || !newPassword) return res.status(400).json({ message: 'Datos incompletos.' });
+
+    try {
+        const [users] = await db.promise().query(
+            'SELECT id_usuario FROM Usuario WHERE reset_token = ? AND token_expiracion > NOW()', 
+            [token]
+        );
+
+        if (users.length === 0) {
+            return res.status(400).json({ message: 'El link es inválido o ya expiró.' });
+        }
+
+        const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+        await db.promise().query(
+            'UPDATE Usuario SET password = ?, reset_token = NULL, token_expiracion = NULL WHERE id_usuario = ?',
+            [hashedPassword, users[0].id_usuario]
+        );
+
+        res.json({ message: '¡Contraseña actualizada con éxito! Ya puedes iniciar sesión.' });
+
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ message: 'Error interno al cambiar la clave.' });
+    }
 });
 
 // Obtener Todos los Usuarios
