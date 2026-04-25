@@ -53,20 +53,20 @@ db.getConnection((err, connection) => {
 // CONFIGURACIÓN DE CORREOS (NODEMAILER)
 // =========================================================================
 const transporter = nodemailer.createTransport({
-  service: 'gmail',
-  auth: {
-    user: process.env.EMAIL_USER, // Su Gmail
-    pass: process.env.EMAIL_PASS  // La clave de 16 letras
-  }
+    service: 'gmail',
+    auth: {
+        user: process.env.EMAIL_USER, // Su Gmail
+        pass: process.env.EMAIL_PASS  // La clave de 16 letras
+    }
 });
 
 // Prueba rápida para ver si el cartero tiene la llave correcta
 transporter.verify((error, success) => {
-  if (error) {
-    console.log("❌ Error con el cartero de Gmail:", error);
-  } else {
-    console.log("✅ El cartero de Gmail está listo para repartir!");
-  }
+    if (error) {
+        console.log("❌ Error con el cartero de Gmail:", error);
+    } else {
+        console.log("✅ El cartero de Gmail está listo para repartir!");
+    }
 });
 
 // Helper para correo de bienvenida
@@ -205,7 +205,7 @@ app.post('/api/login', (req, res) => {
             const usuario = results[0];
             // Comparamos el hash de la BD con el password que escribió el usuario
             const match = await bcrypt.compare(password, usuario.password);
-            
+
             if (match) {
                 // Remover el campo de la contraseña antes de mandarlo al frontend por seguridad
                 delete usuario.password;
@@ -219,6 +219,31 @@ app.post('/api/login', (req, res) => {
     });
 });
 
+// Actualizar Perfil de Usuario (PUT)
+app.put('/api/usuarios/:id', async (req, res) => {
+    const { id } = req.params;
+    const { nombre, documento, telefono } = req.body;
+
+    try {
+        // 1. Actualizar tabla principal Usuario
+        await db.promise().query(
+            'UPDATE Usuario SET nombre = ?, documento = ?, telefono = ? WHERE id_usuario = ?',
+            [nombre, documento, telefono, id]
+        );
+
+        // 2. Sincronizar con la subtabla Participante (si aplica)
+        await db.promise().query(
+            'UPDATE Participante SET nombre = ?, matricula = ? WHERE id_usuario = ?',
+            [nombre, documento, id]
+        );
+
+        res.status(200).json({ mensaje: 'Perfil actualizado exitosamente' });
+    } catch (error) {
+        console.error("Error actualizando perfil:", error);
+        res.status(500).json({ error: 'No se pudo actualizar la información del perfil' });
+    }
+});
+
 // =========================================================================
 // RUTAS (ENDPOINTS) - RECUPERACIÓN DE CONTRASEÑA
 // =========================================================================
@@ -230,7 +255,7 @@ app.post('/api/olvide-password', async (req, res) => {
 
     try {
         const [users] = await db.promise().query('SELECT id_usuario FROM Usuario WHERE email = ?', [email]);
-        
+
         if (users.length === 0) {
             return res.status(404).json({ message: 'Si el correo existe, recibirá instrucciones.' });
         }
@@ -287,7 +312,7 @@ app.post('/api/reset-password', async (req, res) => {
 
     try {
         const [users] = await db.promise().query(
-            'SELECT id_usuario FROM Usuario WHERE reset_token = ? AND token_expiracion > NOW()', 
+            'SELECT id_usuario FROM Usuario WHERE reset_token = ? AND token_expiracion > NOW()',
             [token]
         );
 
@@ -373,7 +398,7 @@ app.post('/api/inscripciones', async (req, res) => {
     try {
         // Encontrar id_participante conectado al usuario logueado
         const [[participanteDB]] = await db.promise().query(
-            'SELECT id_participante FROM Participante WHERE id_usuario = ?', 
+            'SELECT id_participante FROM Participante WHERE id_usuario = ?',
             [id_usuario]
         );
 
