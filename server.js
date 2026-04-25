@@ -193,50 +193,54 @@ app.post('/api/olvide-password', async (req, res) => {
     if (!email) return res.status(400).json({ error: 'El correo es obligatorio' });
 
     try {
-        const [users] = await db.promise().query('SELECT id_usuario, nombre FROM Usuario WHERE email = ?', [email]);
+        const [users] = await db.promise().query('SELECT id_usuario FROM Usuario WHERE email = ?', [email]);
+        
         if (users.length === 0) {
-            return res.status(404).json({ error: 'No existe una cuenta con ese correo' });
+            return res.status(404).json({ message: 'Si el correo existe, recibirá instrucciones.' });
         }
 
-        const user = users[0];
-        const token = crypto.randomBytes(32).toString('hex');
-        
-        // El token expira en 1 hora
-        const expiration = new Date();
-        expiration.setHours(expiration.getHours() + 1);
-
+        const token = crypto.randomBytes(20).toString('hex');
+        const expiracion = new Date(Date.now() + 3600000); // 1 hora
         await db.promise().query(
-            'UPDATE Usuario SET reset_token = ?, token_expiracion = ? WHERE id_usuario = ?',
-            [token, expiration, user.id_usuario]
+            'UPDATE Usuario SET reset_token = ?, token_expiracion = ? WHERE email = ?',
+            [token, expiracion, email]
         );
 
-        const resetUrl = `${process.env.FRONTEND_URL || 'http://localhost:5173'}/restablecer-password?token=${token}`;
-
         const mailOptions = {
-            from: process.env.EMAIL_USER,
+            from: `"Soporte SISWEB" <${process.env.EMAIL_USER}>`,
             to: email,
             subject: 'Recuperación de Contraseña - SISWEB',
             html: `
-                <h3>Hola, ${user.nombre || 'Usuario'}</h3>
-                <p>Recibimos una solicitud para restablecer tu contraseña.</p>
-                <p>Haz clic en el siguiente enlace para crear una nueva contraseña:</p>
-                <a href="${resetUrl}" style="display:inline-block; background-color: #007bff; padding: 10px 15px; color: white; text-decoration: none; border-radius: 5px; margin: 10px 0;">Restablecer Contraseña</a>
-                <p>Este enlace expirará en 1 hora.</p>
-                <p>Si no solicitaste este cambio, ignora este correo.</p>
+                <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #e0e0e0; border-radius: 8px; overflow: hidden;">
+                    <div style="background-color: #1565C0; padding: 20px; text-align: center;">
+                        <h1 style="color: white; margin: 0;">SISWEB</h1>
+                    </div>
+                    <div style="padding: 30px; color: #333;">
+                        <h2>Hola,</h2>
+                        <p>Hemos recibido una solicitud para restablecer tu contraseña en la plataforma SISWEB.</p>
+                        <p>Haz clic en el siguiente botón para crear una nueva contraseña. <strong>Este enlace expira en 1 hora.</strong></p>
+                        <div style="text-align: center; margin: 30px 0;">
+                            <a href="${process.env.FRONTEND_URL || 'https://sisweb.online'}/restablecer-password?token=${token}" 
+                               style="background-color: #1565C0; color: white; padding: 12px 25px; text-decoration: none; border-radius: 5px; font-weight: bold; display: inline-block;">
+                               Restablecer mi contraseña
+                            </a>
+                        </div>
+                        <p style="font-size: 13px; color: #777;">Si el botón no funciona, copia y pega este link en tu navegador:<br>
+                        ${process.env.FRONTEND_URL || 'https://sisweb.online'}/restablecer-password?token=${token}</p>
+                    </div>
+                    <div style="background-color: #f5f5f5; padding: 15px; text-align: center; font-size: 12px; color: #888;">
+                        &copy; 2026 Proyecto SISWEB - Universidad del Valle.
+                    </div>
+                </div>
             `
         };
 
-        transporter.sendMail(mailOptions, (error, info) => {
-            if (error) {
-                console.error("Error enviando email:", error);
-                return res.status(500).json({ error: 'Error al enviar el correo de recuperación' });
-            }
-            res.json({ message: 'Se ha enviado un correo con las instrucciones a tu bandeja de entrada.' });
-        });
+        await transporter.sendMail(mailOptions);
+        res.json({ message: 'Correo enviado. Revisa tu bandeja de entrada o spam.' });
 
     } catch (error) {
-        console.error(error);
-        res.status(500).json({ error: 'Error interno del servidor.' });
+        console.error("Error mandando el correo:", error);
+        res.status(500).json({ message: 'Error interno del servidor.' });
     }
 });
 
