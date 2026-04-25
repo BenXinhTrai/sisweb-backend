@@ -92,7 +92,7 @@ const enviarCorreoBienvenida = (email, nombre, rol) => {
                     </div>
                 </div>
                 <div style="background-color: #f5f5f5; padding: 15px; text-align: center; font-size: 12px; color: #888;">
-                    &copy; 2026 Proyecto SISWEB - Universidad del Valle.
+                    &copy; 2026 Proyecto SISWEB - SENA.
                 </div>
             </div>
         `
@@ -265,7 +265,7 @@ app.post('/api/olvide-password', async (req, res) => {
                         ${process.env.FRONTEND_URL || 'https://sisweb.online'}/restablecer-password?token=${token}</p>
                     </div>
                     <div style="background-color: #f5f5f5; padding: 15px; text-align: center; font-size: 12px; color: #888;">
-                        &copy; 2026 Proyecto SISWEB - Universidad del Valle.
+                        &copy; 2026 Proyecto SISWEB - SENA.
                     </div>
                 </div>
             `
