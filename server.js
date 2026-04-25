@@ -51,7 +51,7 @@ db.getConnection((err, connection) => {
 // Ruta de Registro con Transacción y bcryptjs
 app.post('/api/registro', async (req, res) => {
     const { email, password, rol, nombre, documento, telefono } = req.body;
-    if (!email || !password) return res.status(400).json({ error: 'Email y password obligatorios' });
+    if (!email || !password || !nombre) return res.status(400).json({ error: 'Nombre, email y password son obligatorios' });
 
     let rolFiltro = rol || 'participante';
 
