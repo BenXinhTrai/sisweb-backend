@@ -364,13 +364,23 @@ app.get('/api/seminarios', (req, res) => {
 
 // Inscribir un Participante a un Seminario (POST)
 app.post('/api/inscripciones', async (req, res) => {
-    const { id_seminario, id_participante, valor, estado } = req.body;
+    const { id_seminario, id_usuario, valor, estado } = req.body;
 
-    if (!id_seminario || !id_participante) {
-        return res.status(400).json({ error: 'Se requiere el ID del seminario y del participante' });
+    if (!id_seminario || !id_usuario) {
+        return res.status(400).json({ error: 'Se requiere el ID del seminario y del usuario' });
     }
 
     try {
+        // Encontrar id_participante conectado al usuario logueado
+        const [[participanteDB]] = await db.promise().query(
+            'SELECT id_participante FROM Participante WHERE id_usuario = ?', 
+            [id_usuario]
+        );
+
+        if (!participanteDB) {
+            return res.status(404).json({ error: 'Perfil de participante no encontrado' });
+        }
+        const id_participante = participanteDB.id_participante;
         // Validar cupos disponibles
         const [[seminario]] = await db.promise().query(`
             SELECT s.nombre, s.cupos_totales, 
@@ -465,22 +475,31 @@ app.get('/api/recursos', (req, res) => {
 // =========================================================================
 
 // Ver mis seminarios inscritos (Para el Participante)
-app.get('/api/mis-inscripciones/:id_participante', (req, res) => {
-    const { id_participante } = req.params;
+app.get('/api/mis-inscripciones/:id_usuario', async (req, res) => {
+    const { id_usuario } = req.params;
 
-    // Hacemos un JOIN para traer los datos del seminario y el estado de la inscripción
-    const sql = `
-        SELECT s.codigo, s.nombre, s.fecha, i.estado, i.fecha as fecha_inscripcion 
-        FROM Inscripcion i 
-        JOIN Seminario s ON i.id_seminario = s.id_seminario 
-        WHERE i.id_participante = ?
-        ORDER BY s.fecha ASC
-    `;
+    try {
+        const [[participante]] = await db.promise().query(
+            'SELECT id_participante FROM Participante WHERE id_usuario = ?',
+            [id_usuario]
+        );
 
-    db.query(sql, [id_participante], (err, results) => {
-        if (err) return res.status(500).json({ error: 'Error al consultar tus inscripciones' });
+        if (!participante) return res.status(200).json([]);
+        const id_participante = participante.id_participante;
+
+        const sql = `
+            SELECT s.codigo, s.nombre, s.fecha, i.estado, i.fecha as fecha_inscripcion 
+            FROM Inscripcion i 
+            JOIN Seminario s ON i.id_seminario = s.id_seminario 
+            WHERE i.id_participante = ?
+            ORDER BY s.fecha ASC
+        `;
+
+        const [results] = await db.promise().query(sql, [id_participante]);
         res.status(200).json(results);
-    });
+    } catch (error) {
+        res.status(500).json({ error: 'Error al consultar inscripciones' });
+    }
 });
 
 // Ver estudiantes inscritos en un seminario (Para el Coordinador)
